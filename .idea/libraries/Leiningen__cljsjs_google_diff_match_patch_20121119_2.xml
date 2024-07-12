@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="Leiningen: cljsjs/google-diff-match-patch:20121119-2">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/cljsjs/google-diff-match-patch/20121119-2/google-diff-match-patch-20121119-2.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

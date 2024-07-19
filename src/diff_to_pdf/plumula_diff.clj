@@ -1,16 +1,24 @@
 (ns diff-to-pdf.plumula_diff
-  (:require [plumula.diff :as d]
+  (:require [clojure.java.io :as io]
+            [plumula.diff :as d]
             [clj-pdf.core :as pdf]))
 
-(defn read-file [file-name]
+(defn read-file-model [file-name]
   (slurp file-name))
 
-(def obrigacao (read-file "src/obrigacao.txt"))
-(def modelo (read-file "src/modelo.txt"))
+(defn read-file-obligation [file-name]
+  (slurp (io/reader file-name :encoding "ISO-8859-1")))     ; Leitura de arquivo em encoding para que o clj-pdf reconheça os símbolos estranhos
 
-(def diffs (d/diff modelo obrigacao))
+(def modelo (read-file-model "src/modelo.txt"))
+(def obrigacao (read-file-obligation "src/obrigacao.txt"))
 
+(def diffs (d/diff modelo obrigacao ::d/cleanup ::d/cleanup-semantic))
+
+(def line-dell (atom 0))
 ;----------------------------------------------------------------------------------------------------
+
+(defn count-newlines [s]
+  (count (re-seq #"(?m)^\|[a-zA-Z0-9]\d{3}\|" s)))
 
 (defn operation-background-color [operation]
   (case operation
@@ -24,13 +32,18 @@
     :plumula.diff/insert [0 128 0]                          ; verde para insert (cor da fonte)
     [0 0 0]))                                               ; preto como padrão (cor da fonte)
 
+(defn increment-atom [value]
+  (reset! line-dell value))
+
 (defn diff-delete [diffs]
-  (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs]
+  (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs
+                              :let [text-copy (assoc {} :plumula.diff/text text)]]
                           (case operation
                             :plumula.diff/equal [:chunk text]
-                            :plumula.diff/delete [:chunk {:background (operation-background-color operation)
-                                                          :color      (operation-text-color operation)} text]
-                            :plumula.diff/insert nil))]
+                            :plumula.diff/delete (do (increment-atom (count-newlines (:plumula.diff/text text-copy)))
+                                                     [:chunk {:background (operation-background-color operation)
+                                                              :color      (operation-text-color operation)} text])
+                            :plumula.diff/insert [:chunk {:background [0 0 0]} (apply str (repeat (- (count-newlines text) @line-dell) "\n"))]))]
     (concat [[:paragraph combined-chunks]])))               ; Retorna o trecho original e o que foi deletado (diff vermelho)
 
 (defn diff-insert [diffs]
@@ -44,7 +57,7 @@
 
 (defn diff-to-pdf [model obligation title file-name]
   (pdf/pdf [
-            {:title title
+            {:title       title
              :orientation :landscape
              :size        :a2}                              ; Configurações da folha do arquivo pdf
             [:table {:header ["Modelo" "Obrigação"]}        ; Definição de colunas: essa configuração é obrigatória, pois é ela que define as duas colunas da tabela para os diffs
@@ -53,7 +66,3 @@
            file-name))
 
 (diff-to-pdf diffs diffs "sped-fical" "diff_sped-fical.pdf")
-
-(comment
-  (type (into [] (diff-insert diffs)))
-  )

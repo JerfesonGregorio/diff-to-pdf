@@ -1,6 +1,5 @@
 (ns diff-to-pdf.teste
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
             [plumula.diff :as d]
             [clj-pdf.core :as pdf]))
 
@@ -13,8 +12,9 @@
 (def modelo (read-file-model "src/modelo.txt"))
 (def obrigacao (read-file-obligation "src/obrigacao.txt"))
 
-(def diffs (d/diff modelo obrigacao ::d/cleanup ::d/cleanup-semantic))
+(def diff-obr (d/diff modelo obrigacao ::d/cleanup ::d/cleanup-efficiency))
 
+(def diff-model (d/diff modelo obrigacao ::d/cleanup ::d/cleanup-semantic))
 
 ;----------------------------------------------------------------------------------------------------
 
@@ -34,17 +34,6 @@
 (defn count-newlines [s]
   (count (re-seq #"(?m)^\|[a-zA-Z0-9]\d{3}\|" s)))
 
-(defn count-inserted-lines [diffs]
-  (reduce + 0 (for [text diffs]
-                (count-newlines text))))
-
-(defn count-deleted-lines [diffs]
-  (reduce + 0 (for [text diffs]
-                (count-newlines text))))
-
-(defn calculate-line-difference [insert delete]
-  (- (count-inserted-lines insert) (count-deleted-lines delete)))
-
 (defn diff-insert [diffs]
   (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs]
                           (case operation
@@ -55,24 +44,21 @@
     (concat [[:paragraph combined-chunks]])))               ; Retorna o trecho original e o que foi inserido (diff verde)
 
 
-(def abs (atom 0))
+(def line-dell (atom 0))
 
-
-(defn incrementar-atom []
-  (swap! abs inc)
-  nil)
-
-(reset! abs 0)
-
-@abs
+(defn increment-atom [value]
+  (reset! line-dell value))
 
 (defn diff-delete [diffs]
-  (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs]
+  (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs
+                              :let [text-copy (assoc {} :plumula.diff/text text)]]
                           (case operation
                             :plumula.diff/equal [:chunk text]
-                            :plumula.diff/delete [:chunk {:background (operation-background-color operation)
-                                                          :color      (operation-text-color operation)} text]
-                            :plumula.diff/insert (do [:chunk {:background [0 0 0]} ] (incrementar-atom)) ))] ; Local em que a lógica de novas linhas será utilizada
+                            :plumula.diff/delete (do (increment-atom (count-newlines (:plumula.diff/text text-copy)))
+                                                     [:chunk {:background (operation-background-color operation)
+                                                              :color      (operation-text-color operation)} text])
+                            :plumula.diff/insert [:chunk {:background [0 0 0]} (apply str (repeat (- (count-newlines text) @line-dell) "\n"))]
+                            ))]
     (concat [[:paragraph combined-chunks]])))               ; Retorna o trecho original e o que foi deletado (diff vermelho)
 
 (defn format! [arg]
@@ -92,56 +78,6 @@
 
 
 
-(diff-to-pdf diffs diffs "sped-fical" "diff_sped-fical.pdf")
+(diff-to-pdf diff-model diff-obr "sped-fical" "diff_sped-fical.pdf")
 
 
-
-
-
-
-(def lazy-seq-example
-  (lazy-seq (range 10)))
-
-(def result1 (doall lazy-seq-example))                      ; Consumindo a sequência pela primeira vez
-(def result2 (doall lazy-seq-example))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(comment
-  (type (into [] (diff-insert diffs)))
-  (diff-delete diffs)
-  (into [] (diff-delete diffs))
-  (count-newlines "\n|c222|")
-
-  (defn count-pattern [s]
-    (count (re-seq #"(?m)^\|[a-zA-Z0-9]\d{3}\|" s)))
-
-  (def input-string "
-
-")
-
-  (count-pattern input-string)
-
-  (count-deleted-lines insert)
-  (count-inserted-lines insert)
-  (calculate-line-difference m o)
-  )

@@ -15,10 +15,20 @@
 (def diffs (d/diff modelo obrigacao ::d/cleanup ::d/cleanup-semantic))
 
 (def line-dell (atom 0))
+
 ;----------------------------------------------------------------------------------------------------
 
 (defn count-newlines [s]
   (count (re-seq #"(?m)^\|[a-zA-Z0-9]\d{3}\|" s)))
+
+(defn increment-atom [value]
+  (reset! line-dell value))
+
+(defn reset-atom []
+  reset! line-dell 0)
+
+(defn format-data! [arg]
+  (mapcat identity (into [] arg)))                          ; Transforma a lazy-seq em um vetor e reduz um nível de aninhamento para que a lib clj-pdf possa reconhecê-lo como um parágrafo
 
 (defn operation-background-color [operation]
   (case operation
@@ -32,9 +42,6 @@
     :plumula.diff/insert [0 128 0]                          ; verde para insert (cor da fonte)
     [0 0 0]))                                               ; preto como padrão (cor da fonte)
 
-(defn increment-atom [value]
-  (reset! line-dell value))
-
 (defn diff-delete [diffs]
   (let [combined-chunks (for [{:keys [plumula.diff/operation plumula.diff/text]} diffs
                               :let [text-copy (assoc {} :plumula.diff/text text)]]
@@ -43,7 +50,9 @@
                             :plumula.diff/delete (do (increment-atom (count-newlines (:plumula.diff/text text-copy)))
                                                      [:chunk {:background (operation-background-color operation)
                                                               :color      (operation-text-color operation)} text])
-                            :plumula.diff/insert [:chunk {:background [0 0 0]} (apply str (repeat (- (count-newlines text) @line-dell) "\n"))]))]
+                            :plumula.diff/insert (do (reset-atom) [:chunk {:background [0 0 0]} (apply str (-> (count-newlines text)
+                                                                                              (- @line-dell)
+                                                                                              (repeat "\n")))])))]
     (concat [[:paragraph combined-chunks]])))               ; Retorna o trecho original e o que foi deletado (diff vermelho)
 
 (defn diff-insert [diffs]
@@ -56,13 +65,12 @@
     (concat [[:paragraph combined-chunks]])))               ; Retorna o trecho original e o que foi inserido (diff verde)
 
 (defn diff-to-pdf [model obligation title file-name]
-  (pdf/pdf [
-            {:title       title
+  (pdf/pdf [{:title       title
              :orientation :landscape
              :size        :a2}                              ; Configurações da folha do arquivo pdf
             [:table {:header ["Modelo" "Obrigação"]}        ; Definição de colunas: essa configuração é obrigatória, pois é ela que define as duas colunas da tabela para os diffs
-             [[:cell (mapcat identity (into [] (diff-delete model)))]] ; Transforma a lazy-seq em um vetor e reduz um nível de aninhamento para que a lib clj-pdf possa reconhecê-lo como um parágrafo
-             [[:cell (mapcat identity (into [] (diff-insert obligation)))]]]] ; Transforma a lazy-seq em um vetor e reduz um nível de aninhamento para que a lib clj-pdf possa reconhecê-lo como um parágrafo
+             [[:cell (format-data! (diff-delete model))]]
+             [[:cell (format-data! (diff-insert obligation))]]]]
            file-name))
 
 (diff-to-pdf diffs diffs "sped-fical" "diff_sped-fical.pdf")
